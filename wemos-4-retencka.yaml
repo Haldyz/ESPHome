@@ -1,0 +1,89 @@
+esphome:
+  name: wemos-4-retencka
+
+esp8266:
+ board: d1_mini_pro
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_base64_key
+  
+ota:
+  password: !secret ota_password
+  
+wifi:
+  ssid: !secret wifi_name
+  password: !secret wifi_password
+#  use_address: wemos-4-test.local
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Wemos-4-Retencka"
+    password: !secret ap_password
+
+captive_portal:
+
+sensor:
+  - platform: ultrasonic
+    trigger_pin: D2
+    echo_pin: D1
+    name: "Výška hladiny v retenčce"
+    id: vyska_hladiny_v_retencce
+    filters:
+    - offset: -1.4
+    - multiply: -1
+    - filter_out: nan
+    - median:
+        window_size: 10
+        send_every: 2
+    update_interval: 120s
+    unit_of_measurement: "m"
+
+  - platform: ultrasonic
+    trigger_pin: D2
+    echo_pin: D1
+    name: "Objem vody v retenčce v litrech"
+    id: objem_vody_litry
+    filters:
+    - offset: -1.4
+    - multiply: -1
+    # delka nadrze = 4,2m ; polomer retencky = 0,7m
+    - lambda: return 1000*4.2*(0.7*0.7*acos((0.7-x)/0.7)-(0.7-x)*sqrt((2*x*0.7)-(x*x))) ;
+    - filter_out: nan
+    - median:
+        window_size: 10
+        send_every: 2
+    update_interval: 120s
+    unit_of_measurement: "l"
+    accuracy_decimals: 0
+
+  - platform: ultrasonic
+    trigger_pin: D2
+    echo_pin: D1
+    name: "Objem vody v retenčce v procentech"
+    id: objem_vody_procenta
+    filters:
+    - offset: -1.4
+    - multiply: -1
+    # delka nadrze = 4,2m ; polomer nadrze = 0,7m ; reálná max. výška hladiny	1.14 m -> 5638 litru
+    - lambda: return 100*(1000*4.2*(0.7*0.7*acos((0.7-x)/0.7)-(0.7-x)*sqrt((2*x*0.7)-(x*x)))/5638) ;
+    - filter_out: nan
+    - median:
+        window_size: 10
+        send_every: 2
+    update_interval: 120s
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+#  - platform: template
+#    name: "Úhrn srážek za hodinu"
+#    id: srazky
+#    unit_of_measurement: 'mm'
+#   value_template: {{ float(states('sensor.naprselo_za_posledni_hodinu)) / 183 }}
+
+web_server:
+  port: 80
