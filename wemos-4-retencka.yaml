@@ -2,7 +2,9 @@ esphome:
   name: wemos-4-retencka
 
 esp8266:
- board: d1_mini_pro
+  #board: d1_mini_pro
+  #board: d1_mini
+  board: esp01_1m
 
 # Enable logging
 logger:
@@ -13,12 +15,13 @@ api:
     key: !secret api_base64_key
   
 ota:
+  platform: esphome
   password: !secret ota_password
   
 wifi:
   ssid: !secret wifi_name
   password: !secret wifi_password
-#  use_address: wemos-4-test.local
+  #  use_address: wemos-4-test.local
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
@@ -27,55 +30,69 @@ wifi:
 
 captive_portal:
 
+# required for Dallas sensor
+one_wire:
+  - platform: gpio
+    pin: GPIO14 #D5
+
 sensor:
+  - platform: dallas_temp
+    #address: 0x1234567812345628 #Required if there is more than one device on the bus.
+    update_interval: 120s
+    name: "Teplota v retenčce"
+    filters:
+      - offset: 0.5
+      - filter_out: -50
+
   - platform: ultrasonic
-    trigger_pin: D2
-    echo_pin: D1
+    trigger_pin: GPIO04   # D2
+    echo_pin: GPIO05      # D1
     name: "Výška hladiny v retenčce"
     id: vyska_hladiny_v_retencce
     filters:
-    - offset: -1.4
-    - multiply: -1
-    - filter_out: nan
-    - median:
-        window_size: 10
-        send_every: 2
+      - offset: -1.4      # průměr nádrže - vzdálenost senzoru ode dna
+      - multiply: -1
+      - filter_out: nan   # filtrování nulových hodnot
+      - median:
+          window_size: 10
+          send_every: 2
     update_interval: 120s
     unit_of_measurement: "m"
 
-  - platform: ultrasonic
-    trigger_pin: D2
-    echo_pin: D1
+  # Derived sensors configuration (calculated from vyska_hladiny_v_retencce)
+  - platform: template
     name: "Objem vody v retenčce v litrech"
     id: objem_vody_litry
-    filters:
-    - offset: -1.4
-    - multiply: -1
-    # delka nadrze = 4,2m ; polomer retencky = 0,7m
-    - lambda: return 1000*4.2*(0.7*0.7*acos((0.7-x)/0.7)-(0.7-x)*sqrt((2*x*0.7)-(x*x))) ;
-    - filter_out: nan
-    - median:
-        window_size: 10
-        send_every: 2
     update_interval: 120s
+    # délka nádrže = 4,2m ; poloměr nádrže = 0,7m
+    lambda: |-
+      float x = id(vyska_hladiny_v_retencce).state;
+      if (isnan(x)) return 0;
+      float calculated = 1000 * 4.2 * (0.7 * 0.7 * acos((0.7 - x) / 0.7) - (0.7 - x) * sqrt((2 * x * 0.7) - (x * x)));
+      return calculated;
+    filters:
+      - filter_out: nan       # filtrování nulových hodnot
+      - median:
+          window_size: 10
+          send_every: 2
     unit_of_measurement: "l"
     accuracy_decimals: 0
 
-  - platform: ultrasonic
-    trigger_pin: D2
-    echo_pin: D1
+  - platform: template
     name: "Objem vody v retenčce v procentech"
     id: objem_vody_procenta
-    filters:
-    - offset: -1.4
-    - multiply: -1
-    # delka nadrze = 4,2m ; polomer nadrze = 0,7m ; reálná max. výška hladiny	1.14 m -> 5638 litru
-    - lambda: return 100*(1000*4.2*(0.7*0.7*acos((0.7-x)/0.7)-(0.7-x)*sqrt((2*x*0.7)-(x*x)))/5638) ;
-    - filter_out: nan
-    - median:
-        window_size: 10
-        send_every: 2
     update_interval: 120s
+    # délka nádrže = 4,2m ; poloměr nádrže = 0,7m ; reálná max. výška hladiny 1.14 m -> 5638 litrů
+    lambda: |-
+      float x = id(vyska_hladiny_v_retencce).state;
+      if (isnan(x)) return 0;
+      float calculated = 100 * (1000 * 4.2 * (0.7 * 0.7 * acos((0.7 - x) / 0.7) - (0.7 - x) * sqrt((2 * x * 0.7) - (x * x))) / 5638);
+      return calculated;
+    filters:
+      - filter_out: nan       # filtrování nulových hodnot
+      - median:
+          window_size: 10
+          send_every: 2
     unit_of_measurement: "%"
     accuracy_decimals: 0
 
